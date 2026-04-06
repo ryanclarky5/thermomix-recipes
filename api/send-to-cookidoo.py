@@ -51,7 +51,8 @@ async def _push_recipe(recipe: dict) -> dict:
         token_type: str = api.auth_data.token_type.lower().capitalize()  # "Bearer"
 
     # ── Step 2: Push recipe to Cookidoo web API ────────────────────────────
-    endpoint = f"{base_url}/created-recipes/{locale}"
+    # Cookidoo URL uses language-COUNTRY format (e.g. de-CH), not country-lang (ch-de)
+    endpoint = f"{base_url}/created-recipes/{language}"
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
@@ -106,7 +107,7 @@ async def _push_recipe(recipe: dict) -> dict:
     return {
         "success": True,
         "recipeId": recipe_id,
-        "url": f"{base_url}/created-recipes/{locale}/{recipe_id}",
+        "url": f"{base_url}/created-recipes/{language}/{recipe_id}",
     }
 
 
