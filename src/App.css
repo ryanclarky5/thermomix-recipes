@@ -1,0 +1,318 @@
+.app {
+  max-width: 600px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ── */
+.app-header {
+  background: #c0392b;
+  color: white;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+.header-logo { font-size: 32px; line-height: 1; }
+.header-title { font-size: 20px; font-weight: 700; line-height: 1.2; }
+.header-sub { font-size: 12px; opacity: 0.75; margin-top: 2px; }
+
+/* ── Steps bar ── */
+.steps-bar {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 28px;
+  background: white;
+  border-bottom: 1px solid #e8e0d8;
+  flex-shrink: 0;
+}
+.steps-track {
+  position: absolute;
+  top: 50%;
+  left: 52px;
+  right: 52px;
+  height: 2px;
+  background: #e0d8d0;
+  transform: translateY(-50%);
+  z-index: 0;
+}
+.steps-fill {
+  height: 100%;
+  background: #c0392b;
+  transition: width 0.4s ease;
+}
+.step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  z-index: 1;
+}
+.step-circle {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #e0d8d0;
+  color: #999;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.3s, color 0.3s;
+}
+.step-item.current .step-circle {
+  background: #c0392b;
+  color: white;
+}
+.step-item.past .step-circle {
+  background: #27ae60;
+  color: white;
+}
+.step-label {
+  font-size: 10px;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+.step-item.current .step-label { color: #c0392b; }
+.step-item.past .step-label { color: #27ae60; }
+
+/* ── Main ── */
+.main {
+  flex: 1;
+  padding: 20px 16px 40px;
+}
+
+/* ── Screen ── */
+.screen-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #1a1a1a;
+}
+.screen-hint {
+  font-size: 14px;
+  color: #777;
+  margin-bottom: 18px;
+  line-height: 1.5;
+}
+
+/* ── Prompt textarea ── */
+.prompt-textarea {
+  width: 100%;
+  padding: 14px;
+  border: 2px solid #ddd;
+  border-radius: 12px;
+  font-size: 16px;
+  resize: vertical;
+  margin-bottom: 16px;
+  background: white;
+  line-height: 1.5;
+  transition: border-color 0.15s;
+  -webkit-appearance: none;
+}
+.prompt-textarea:focus {
+  outline: none;
+  border-color: #c0392b;
+}
+.prompt-textarea:disabled { opacity: 0.6; }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 13px 20px;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+.btn:not(:disabled):hover { opacity: 0.88; }
+
+.btn-primary { background: #c0392b; color: white; }
+.btn-secondary { background: #f0ebe5; color: #333; }
+.btn-ghost { background: transparent; color: #666; padding-left: 0; }
+
+.btn-full { width: 100%; }
+
+/* ── Spinner ── */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.65s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Error ── */
+.error-box {
+  background: #fff0ee;
+  border: 1.5px solid #f5c0bb;
+  color: #b03020;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── Recipe card ── */
+.recipe-card {
+  background: white;
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+}
+.recipe-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  line-height: 1.3;
+}
+.recipe-desc {
+  font-size: 14px;
+  color: #666;
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+.recipe-meta {
+  display: flex;
+  gap: 14px;
+  font-size: 13px;
+  color: #888;
+  flex-wrap: wrap;
+}
+
+/* ── Recipe sections ── */
+.recipe-section {
+  background: white;
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+}
+.section-heading {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #c0392b;
+  margin-bottom: 14px;
+}
+
+.ingredient-list { list-style: none; display: flex; flex-direction: column; gap: 7px; }
+.ingredient-item {
+  padding: 9px 12px;
+  background: #f8f4f0;
+  border-radius: 8px;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.instruction-list { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+.instruction-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 15px;
+  line-height: 1.6;
+}
+.step-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  background: #c0392b;
+  color: white;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* ── Action bar ── */
+.action-bar {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+.action-bar .btn-primary { flex: 1; }
+
+/* ── Edit form ── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.field-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 0;
+}
+.field-half { flex: 1; min-width: 0; }
+.field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+}
+.field-note {
+  font-weight: 400;
+  color: #aaa;
+  font-size: 12px;
+}
+.field-input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1.5px solid #ddd;
+  border-radius: 10px;
+  font-size: 15px;
+  background: white;
+  line-height: 1.5;
+  transition: border-color 0.15s;
+  -webkit-appearance: none;
+}
+.field-input:focus { outline: none; border-color: #c0392b; }
+.field-tall { min-height: 160px; resize: vertical; }
+
+/* ── Confirmation screen ── */
+.screen-confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
+  padding-top: 16px;
+}
+.confirm-icon { font-size: 72px; line-height: 1; }
+.confirm-title { font-size: 26px; font-weight: 700; }
+.confirm-body {
+  font-size: 16px;
+  color: #666;
+  line-height: 1.5;
+  max-width: 300px;
+}

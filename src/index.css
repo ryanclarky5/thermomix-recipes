@@ -1,0 +1,14 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f2ede8;
+  color: #1a1a1a;
+  min-height: 100dvh;
+}
+
+button, input, textarea, select {
+  font-family: inherit;
+}
