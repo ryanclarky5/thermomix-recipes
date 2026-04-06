@@ -316,3 +316,134 @@
   line-height: 1.5;
   max-width: 300px;
 }
+
+/* ── PIN screen ── */
+.pin-screen {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px 48px;
+  background: #faf7f4;
+}
+.pin-logo { font-size: 56px; line-height: 1; margin-bottom: 12px; }
+.pin-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 6px;
+}
+.pin-subtitle {
+  font-size: 14px;
+  color: #888;
+  margin-bottom: 32px;
+}
+.pin-dots {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.pin-dots.shake {
+  animation: pin-shake 0.45s ease;
+}
+.pin-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #ccc;
+  background: transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+.pin-dot.filled {
+  background: #c0392b;
+  border-color: #c0392b;
+}
+@keyframes pin-shake {
+  0%, 100% { transform: translateX(0); }
+  15%       { transform: translateX(-8px); }
+  30%       { transform: translateX(8px); }
+  45%       { transform: translateX(-6px); }
+  60%       { transform: translateX(6px); }
+  75%       { transform: translateX(-3px); }
+  90%       { transform: translateX(3px); }
+}
+.pin-error-area {
+  min-height: 22px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+}
+.pin-error {
+  font-size: 13px;
+  color: #c0392b;
+  font-weight: 600;
+}
+.pin-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  width: 100%;
+  max-width: 300px;
+}
+.pin-key {
+  aspect-ratio: 1;
+  border: none;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.10);
+  font-size: 22px;
+  font-weight: 600;
+  color: #1a1a1a;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.1s;
+  -webkit-tap-highlight-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pin-key:active { transform: scale(0.91); background: #f0ebe5; }
+.pin-key:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.pin-key-enter {
+  background: #c0392b;
+  color: white;
+  box-shadow: 0 2px 8px rgba(192,57,43,0.35);
+}
+.pin-key-enter:active { background: #a93226; }
+.pin-key-back { font-size: 20px; color: #888; }
+
+/* ── Mic button ── */
+.mic-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 14px;
+  border: 2px solid #ddd;
+  border-radius: 12px;
+  background: white;
+  font-size: 15px;
+  font-weight: 500;
+  color: #555;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.mic-btn:active { background: #f8f4f0; }
+.mic-btn.mic-listening {
+  border-color: #c0392b;
+  background: #fff0ee;
+  color: #c0392b;
+  font-weight: 600;
+}
+.mic-icon { font-size: 18px; }
+.mic-pulse {
+  color: #c0392b;
+  animation: mic-blink 0.9s ease-in-out infinite;
+}
+@keyframes mic-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.25; }
+}
