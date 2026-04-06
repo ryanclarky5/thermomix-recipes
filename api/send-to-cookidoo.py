@@ -96,8 +96,14 @@ async def _push_recipe(recipe: dict) -> dict:
                 "prepTime": int(recipe.get("prepTime", 0)),
                 "totalTime": int(recipe.get("totalTime", 0)),
                 "tools": ["TM6"],
-                "ingredients": recipe.get("ingredients", []),
-                "instructions": recipe.get("instructions", []),
+                "ingredients": [
+                    {"type": "INGREDIENT", "text": i.get("text", i) if isinstance(i, dict) else i}
+                    for i in recipe.get("ingredients", [])
+                ],
+                "instructions": [
+                    {"type": "STEP", "text": s.get("text", s) if isinstance(s, dict) else s}
+                    for s in recipe.get("instructions", [])
+                ],
             },
         ) as resp:
             if resp.status not in (200, 201, 204):
