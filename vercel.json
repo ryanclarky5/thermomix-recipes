@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/send-to-cookidoo.py": {
+      "runtime": "python3.12"
+    }
+  },
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
