@@ -1,18 +1,6 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import './App.css';
-
-// ─── localStorage helpers ───────────────────────────────────────────────────
-
-const HISTORY_KEY = 'thermomix_history';
-
-function loadHistory() {
-  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); }
-  catch { return []; }
-}
-
-function persistHistory(h) {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(h));
-}
+import { fetchRecipes, upsertRecipe, removeRecipe, DB_ENABLED } from './db';
 
 // ─── Formatting helpers ──────────────────────────────────────────────────────
 
@@ -40,7 +28,7 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-// ─── Image compression helper ────────────────────────────────────────────────
+// ─── Image compression ───────────────────────────────────────────────────────
 
 async function compressImage(file, maxWidth = 1024, quality = 0.82) {
   return new Promise((resolve) => {
@@ -71,8 +59,8 @@ async function compressImage(file, maxWidth = 1024, quality = 0.82) {
 
 function StepCard({ step, index }) {
   const isTM = step.type === 'thermomix';
-  const temp = fmtTemp(step.temperature);
-  const time = fmtTime(step.time);
+  const temp  = fmtTemp(step.temperature);
+  const time  = fmtTime(step.time);
   const speed = fmtSpeed(step.speed);
   const hasParams = isTM && (temp || time || speed);
 
@@ -85,24 +73,9 @@ function StepCard({ step, index }) {
       <p className="step-card-text">{step.text}</p>
       {hasParams && (
         <div className="step-params">
-          {temp && (
-            <div className="step-param">
-              <span className="step-param-icon">🌡</span>
-              <span className="step-param-val">{temp}</span>
-            </div>
-          )}
-          {time && (
-            <div className="step-param">
-              <span className="step-param-icon">⏱</span>
-              <span className="step-param-val">{time}</span>
-            </div>
-          )}
-          {speed && (
-            <div className="step-param">
-              <span className="step-param-icon">💨</span>
-              <span className="step-param-val">{speed}</span>
-            </div>
-          )}
+          {temp  && <div className="step-param"><span className="step-param-icon">🌡</span><span className="step-param-val">{temp}</span></div>}
+          {time  && <div className="step-param"><span className="step-param-icon">⏱</span><span className="step-param-val">{time}</span></div>}
+          {speed && <div className="step-param"><span className="step-param-icon">💨</span><span className="step-param-val">{speed}</span></div>}
         </div>
       )}
     </div>
@@ -120,13 +93,7 @@ function HistoryCard({ entry, onOpen, onDelete }) {
           <span>📅 {fmtDate(entry.createdAt)}</span>
         </div>
       </div>
-      <button
-        className="history-card-delete"
-        onClick={e => { e.stopPropagation(); onDelete(); }}
-        aria-label="Delete recipe"
-      >
-        🗑
-      </button>
+      <button className="history-card-delete" onClick={e => { e.stopPropagation(); onDelete(); }} aria-label="Delete">🗑</button>
     </div>
   );
 }
@@ -167,16 +134,9 @@ function PinScreen({ onSuccess }) {
 
   function press(key) {
     if (loading) return;
-    if (key === '⌫') {
-      setPin(p => p.slice(0, -1));
-      setError('');
-    } else if (key === '→') {
-      submit();
-    } else {
-      if (pin.length >= 8) return;
-      setPin(p => p + key);
-      setError('');
-    }
+    if (key === '⌫') { setPin(p => p.slice(0, -1)); setError(''); }
+    else if (key === '→') { submit(); }
+    else { if (pin.length >= 8) return; setPin(p => p + key); setError(''); }
   }
 
   const PAD = ['1','2','3','4','5','6','7','8','9','⌫','0','→'];
@@ -187,17 +147,14 @@ function PinScreen({ onSuccess }) {
       <div className="pin-logo">🍲</div>
       <h1 className="pin-title">Thermomix Recipes</h1>
       <p className="pin-subtitle">Enter your PIN to continue</p>
-
       <div className={`pin-dots${shaking ? ' shake' : ''}`}>
         {Array.from({ length: dotCount }, (_, i) => (
           <div key={i} className={`pin-dot${i < pin.length ? ' filled' : ''}`} />
         ))}
       </div>
-
       <div className="pin-error-area">
         {error && <span className="pin-error">{error}</span>}
       </div>
-
       <div className="pin-pad">
         {PAD.map(key => (
           <button
@@ -214,7 +171,7 @@ function PinScreen({ onSuccess }) {
   );
 }
 
-// ─── Root App ────────────────────────────────────────────────────────────────
+// ─── Root ────────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [authed, setAuthed] = useState(() => sessionStorage.getItem('app_authed') === '1');
@@ -234,8 +191,10 @@ function MainApp() {
   // Navigation
   const [tab, setTab] = useState('generate');
 
-  // History
-  const [history, setHistory] = useState(() => loadHistory());
+  // Shared recipe history (Firestore)
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(DB_ENABLED);
+  const [historyError, setHistoryError] = useState('');
 
   // Generate flow
   const [step, setStep] = useState(1);
@@ -250,19 +209,34 @@ function MainApp() {
   const [editForm, setEditForm] = useState({});
   const [result, setResult] = useState(null);
   const [isListening, setIsListening] = useState(false);
+
+  // AI edit
+  const [aiEditMode, setAiEditMode] = useState(false);
+  const [aiEditPrompt, setAiEditPrompt] = useState('');
+  const [aiEditing, setAiEditing] = useState(false);
+
   const [toast, setToast] = useState(null);
 
   const recognitionRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // ── Toast ────────────────────────────────────────────────────────────────
+  // ── Load recipes from Firestore on mount ──────────────────────────────────
+  useEffect(() => {
+    if (!DB_ENABLED) return;
+    fetchRecipes()
+      .then(setHistory)
+      .catch(e => setHistoryError(e.message))
+      .finally(() => setHistoryLoading(false));
+  }, []);
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
   function showToast(message, type = 'success') {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   }
 
   // ── History helpers ───────────────────────────────────────────────────────
-  function saveToHistory(recipeData, cookidooResult) {
+  async function saveToHistory(recipeData, cookidooResult) {
     const entry = {
       id: Date.now().toString(),
       cookidooRecipeId: cookidooResult.recipeId,
@@ -277,16 +251,14 @@ function MainApp() {
       ingredients: recipeData.ingredients,
       instructions: recipeData.instructions,
     };
-    const updated = [entry, ...history];
-    setHistory(updated);
-    persistHistory(updated);
+    await upsertRecipe(entry);
+    setHistory(prev => [entry, ...prev]);
     return entry;
   }
 
-  function deleteFromHistory(id) {
-    const updated = history.filter(e => e.id !== id);
-    setHistory(updated);
-    persistHistory(updated);
+  async function deleteFromHistory(id) {
+    await removeRecipe(id);
+    setHistory(prev => prev.filter(e => e.id !== id));
   }
 
   function openFromHistory(entry) {
@@ -294,6 +266,7 @@ function MainApp() {
     setHistoryId(entry.id);
     setStep(2);
     setEditMode(false);
+    setAiEditMode(false);
     setError('');
     setResult(null);
     setTab('generate');
@@ -305,28 +278,23 @@ function MainApp() {
     setRecipe(null);
     setStep(1);
     setEditMode(false);
+    setAiEditMode(false);
     setError('');
   }
 
   // ── Voice input ───────────────────────────────────────────────────────────
   function toggleVoice() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      alert('Voice input is not supported in this browser. Try Chrome or Safari.');
-      return;
-    }
-    if (isListening) {
-      recognitionRef.current?.stop();
-      return;
-    }
+    if (!SR) { alert('Voice input not supported in this browser. Try Chrome or Safari.'); return; }
+    if (isListening) { recognitionRef.current?.stop(); return; }
     const recognition = new SR();
     recognition.lang = 'en-US';
     recognition.continuous = false;
     recognition.interimResults = false;
     recognition.onstart = () => setIsListening(true);
     recognition.onresult = e => {
-      const transcript = Array.from(e.results).map(r => r[0].transcript).join(' ').trim();
-      setPrompt(p => p ? `${p.trimEnd()} ${transcript}` : transcript);
+      const t = Array.from(e.results).map(r => r[0].transcript).join(' ').trim();
+      setPrompt(p => p ? `${p.trimEnd()} ${t}` : t);
     };
     recognition.onerror = e => { if (e.error !== 'aborted') setIsListening(false); };
     recognition.onend = () => setIsListening(false);
@@ -334,12 +302,11 @@ function MainApp() {
     try { recognition.start(); } catch { setIsListening(false); }
   }
 
-  // ── Photo handling ────────────────────────────────────────────────────────
+  // ── Photos ────────────────────────────────────────────────────────────────
   const handleFileChange = useCallback(async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
-    const slots = 5 - images.length;
-    const toProcess = files.slice(0, slots);
+    const toProcess = files.slice(0, 5 - images.length);
     const results = await Promise.all(toProcess.map(compressImage));
     setImages(prev => [...prev, ...results.filter(Boolean)]);
     e.target.value = '';
@@ -349,12 +316,9 @@ function MainApp() {
     setImages(prev => prev.filter((_, i) => i !== index));
   }
 
-  // ── Recipe generation ─────────────────────────────────────────────────────
+  // ── Generate ──────────────────────────────────────────────────────────────
   async function generate() {
-    const hasText = prompt.trim();
-    const hasImages = images.length > 0;
-    if (!hasText && !hasImages) return;
-    if (loading) return;
+    if ((!prompt.trim() && images.length === 0) || loading) return;
     setLoading(true);
     setError('');
     try {
@@ -371,6 +335,7 @@ function MainApp() {
       setRecipe(data);
       setHistoryId(null);
       setEditMode(false);
+      setAiEditMode(false);
       setStep(2);
     } catch (e) {
       setError(e.message);
@@ -379,7 +344,7 @@ function MainApp() {
     }
   }
 
-  // ── Edit ──────────────────────────────────────────────────────────────────
+  // ── Manual edit ───────────────────────────────────────────────────────────
   function startEdit() {
     setEditForm({
       title: recipe.title,
@@ -391,6 +356,7 @@ function MainApp() {
       instructionsText: recipe.instructions.map((s, i) => `${i + 1}. ${s.text}`).join('\n'),
     });
     setEditMode(true);
+    setAiEditMode(false);
   }
 
   function saveEdit() {
@@ -410,7 +376,30 @@ function MainApp() {
     setEditMode(false);
   }
 
-  // ── Send to Cookidoo (new recipe) ─────────────────────────────────────────
+  // ── AI edit ───────────────────────────────────────────────────────────────
+  async function applyAiEdit() {
+    if (!aiEditPrompt.trim() || aiEditing) return;
+    setAiEditing(true);
+    setError('');
+    try {
+      const res = await fetch('/api/edit-recipe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipe, instruction: aiEditPrompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'AI edit failed');
+      setRecipe(data);
+      setAiEditMode(false);
+      setAiEditPrompt('');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setAiEditing(false);
+    }
+  }
+
+  // ── Send to Cookidoo (new) ────────────────────────────────────────────────
   async function sendToCookidoo() {
     if (sending) return;
     setSending(true);
@@ -423,7 +412,7 @@ function MainApp() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to send to Cookidoo');
-      saveToHistory(recipe, data);
+      await saveToHistory(recipe, data);
       setResult(data);
       setStep(3);
     } catch (e) {
@@ -433,7 +422,7 @@ function MainApp() {
     }
   }
 
-  // ── Update on Cookidoo (existing recipe from history) ─────────────────────
+  // ── Update on Cookidoo (existing) ─────────────────────────────────────────
   async function updateOnCookidoo() {
     if (sending) return;
     setSending(true);
@@ -458,9 +447,8 @@ function MainApp() {
         instructions: recipe.instructions,
         updatedAt: new Date().toISOString(),
       };
-      const newHistory = history.map(e => e.id === historyId ? updatedEntry : e);
-      setHistory(newHistory);
-      persistHistory(newHistory);
+      await upsertRecipe(updatedEntry);
+      setHistory(prev => prev.map(e => e.id === historyId ? updatedEntry : e));
       showToast('Recipe updated on Cookidoo ✓');
     } catch (e) {
       showToast(e.message, 'error');
@@ -470,14 +458,14 @@ function MainApp() {
   }
 
   function reset() {
-    setStep(1); setPrompt(''); setRecipe(null);
-    setResult(null); setError(''); setEditMode(false);
-    setImages([]); setHistoryId(null);
+    setStep(1); setPrompt(''); setRecipe(null); setResult(null);
+    setError(''); setEditMode(false); setImages([]); setHistoryId(null);
+    setAiEditMode(false); setAiEditPrompt('');
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
   const canGenerate = prompt.trim() || images.length > 0;
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="app">
 
@@ -507,7 +495,7 @@ function MainApp() {
         </header>
       )}
 
-      {/* ── STEPS BAR (generate flow only, not when editing from history) ── */}
+      {/* ── STEPS BAR ── */}
       {tab === 'generate' && !historyId && (
         <div className="steps-bar">
           {['Generate', 'Review', 'Done'].map((label, i) => (
@@ -526,44 +514,27 @@ function MainApp() {
 
         {/* ══ GENERATE TAB ══════════════════════════════════════════════════ */}
         {tab === 'generate' && (
-
           <>
-            {/* ── STEP 1: GENERATE ── */}
+            {/* ── STEP 1 ── */}
             {step === 1 && (
               <div className="screen">
                 <h2 className="screen-title">What would you like to make?</h2>
-                <p className="screen-hint">Describe a dish, add photos of your fridge, or both — then let Claude cook up a recipe.</p>
+                <p className="screen-hint">Describe a dish, add photos of your fridge, or both.</p>
 
-                {/* Photo upload */}
                 <div className="photo-section">
-                  <button
-                    className="photo-upload-btn"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={loading || images.length >= 5}
-                    type="button"
-                  >
+                  <button className="photo-upload-btn" onClick={() => fileInputRef.current?.click()}
+                    disabled={loading || images.length >= 5} type="button">
                     <span className="photo-upload-icon">📷</span>
                     {images.length === 0 ? 'Add Photos' : `Add More (${images.length}/5)`}
                   </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="photo-input-hidden"
-                    onChange={handleFileChange}
-                  />
+                  <input ref={fileInputRef} type="file" accept="image/*" multiple
+                    className="photo-input-hidden" onChange={handleFileChange} />
                   {images.length > 0 && (
                     <div className="photo-thumbnails">
                       {images.map((img, i) => (
                         <div key={i} className="photo-thumb-wrap">
                           <img src={img.previewUrl} alt="" className="photo-thumb" />
-                          <button
-                            className="photo-thumb-remove"
-                            onClick={() => removeImage(i)}
-                            type="button"
-                            aria-label="Remove photo"
-                          >×</button>
+                          <button className="photo-thumb-remove" onClick={() => removeImage(i)} type="button" aria-label="Remove">×</button>
                         </div>
                       ))}
                     </div>
@@ -580,11 +551,7 @@ function MainApp() {
                   disabled={loading}
                 />
 
-                <button
-                  className={`mic-btn${isListening ? ' mic-listening' : ''}`}
-                  onClick={toggleVoice}
-                  type="button"
-                >
+                <button className={`mic-btn${isListening ? ' mic-listening' : ''}`} onClick={toggleVoice} type="button">
                   {isListening
                     ? <><span className="mic-pulse">●</span> Listening… tap to stop</>
                     : <><span className="mic-icon">🎤</span> Tap to speak</>}
@@ -592,11 +559,7 @@ function MainApp() {
 
                 {error && <div className="error-box">{error}</div>}
 
-                <button
-                  className="btn btn-primary btn-full"
-                  onClick={generate}
-                  disabled={loading || !canGenerate}
-                >
+                <button className="btn btn-primary btn-full" onClick={generate} disabled={loading || !canGenerate}>
                   {loading
                     ? <><span className="spinner" /> {images.length > 0 ? 'Analysing photos…' : 'Generating recipe…'}</>
                     : '✨ Generate Recipe'}
@@ -629,38 +592,63 @@ function MainApp() {
                 <div className="recipe-section">
                   <h3 className="section-heading">Instructions</h3>
                   <div className="step-list">
-                    {recipe.instructions.map((s, i) => (
-                      <StepCard key={i} step={s} index={i} />
-                    ))}
+                    {recipe.instructions.map((s, i) => <StepCard key={i} step={s} index={i} />)}
                   </div>
                 </div>
 
-                {error && <div className="error-box">{error}</div>}
+                {/* AI Edit panel */}
+                {aiEditMode && (
+                  <div className="ai-edit-panel">
+                    <h3 className="ai-edit-title">✨ Edit with AI</h3>
+                    <p className="ai-edit-hint">Tell Claude what to change and it'll rewrite the recipe for you.</p>
+                    <textarea
+                      className="ai-edit-input"
+                      value={aiEditPrompt}
+                      onChange={e => setAiEditPrompt(e.target.value)}
+                      placeholder="e.g. make it serve 6 people&#10;e.g. make it dairy-free&#10;e.g. add more garlic and make it spicier&#10;e.g. replace chicken with tofu"
+                      rows={3}
+                      disabled={aiEditing}
+                      autoFocus
+                    />
+                    {error && <div className="error-box">{error}</div>}
+                    <div className="action-bar">
+                      <button className="btn btn-ghost" onClick={() => { setAiEditMode(false); setAiEditPrompt(''); setError(''); }}>Cancel</button>
+                      <button className="btn btn-primary" onClick={applyAiEdit} disabled={aiEditing || !aiEditPrompt.trim()}>
+                        {aiEditing ? <><span className="spinner" /> Updating…</> : '✨ Apply Changes'}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
-                <div className="action-bar">
-                  {historyId
-                    ? <button className="btn btn-ghost" onClick={backToHistory}>← Back</button>
-                    : <button className="btn btn-ghost" onClick={() => { setStep(1); setError(''); }}>← Back</button>
-                  }
-                  <button className="btn btn-secondary" onClick={startEdit}>✏️ Edit</button>
-                  {historyId ? (
-                    <button className="btn btn-primary" onClick={updateOnCookidoo} disabled={sending}>
-                      {sending ? <><span className="spinner" /> Updating…</> : '📲 Update Cookidoo'}
-                    </button>
-                  ) : (
-                    <button className="btn btn-primary" onClick={sendToCookidoo} disabled={sending}>
-                      {sending ? <><span className="spinner" /> Sending…</> : '📲 Send to Cookidoo'}
-                    </button>
-                  )}
-                </div>
+                {!aiEditMode && error && <div className="error-box">{error}</div>}
+
+                {!aiEditMode && (
+                  <div className="action-bar">
+                    {historyId
+                      ? <button className="btn btn-ghost" onClick={backToHistory}>← Back</button>
+                      : <button className="btn btn-ghost" onClick={() => { setStep(1); setError(''); }}>← Back</button>
+                    }
+                    <button className="btn btn-secondary btn-icon" onClick={() => { setAiEditMode(true); setEditMode(false); }} title="Edit with AI">✨</button>
+                    <button className="btn btn-secondary btn-icon" onClick={startEdit} title="Manual edit">✏️</button>
+                    {historyId ? (
+                      <button className="btn btn-primary" onClick={updateOnCookidoo} disabled={sending}>
+                        {sending ? <><span className="spinner" /> Updating…</> : '📲 Update'}
+                      </button>
+                    ) : (
+                      <button className="btn btn-primary" onClick={sendToCookidoo} disabled={sending}>
+                        {sending ? <><span className="spinner" /> Sending…</> : '📲 Send'}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
-            {/* ── STEP 2: EDIT ── */}
+            {/* ── STEP 2: MANUAL EDIT ── */}
             {step === 2 && recipe && editMode && (
               <div className="screen">
                 <h2 className="screen-title">Edit Recipe</h2>
-                <p className="screen-hint edit-note">Note: editing converts steps to plain text (Thermomix parameters are removed).</p>
+                <p className="screen-hint edit-note">Saving converts steps to plain text — Thermomix parameters are removed.</p>
                 <label className="field">
                   <span className="field-label">Title</span>
                   <input className="field-input" value={editForm.title} onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))} />
@@ -688,7 +676,7 @@ function MainApp() {
                   <textarea className="field-input field-tall" value={editForm.ingredientsText} onChange={e => setEditForm(f => ({ ...f, ingredientsText: e.target.value }))} rows={8} />
                 </label>
                 <label className="field">
-                  <span className="field-label">Instructions <span className="field-note">one per line — numbers stripped on save</span></span>
+                  <span className="field-label">Instructions <span className="field-note">one per line</span></span>
                   <textarea className="field-input field-tall" value={editForm.instructionsText} onChange={e => setEditForm(f => ({ ...f, instructionsText: e.target.value }))} rows={10} />
                 </label>
                 <div className="action-bar">
@@ -698,7 +686,7 @@ function MainApp() {
               </div>
             )}
 
-            {/* ── STEP 3: CONFIRM ── */}
+            {/* ── STEP 3 ── */}
             {step === 3 && (
               <div className="screen screen-confirm">
                 {result?.success ? (
@@ -707,9 +695,7 @@ function MainApp() {
                     <h2 className="confirm-title">Recipe sent!</h2>
                     <p className="confirm-body"><strong>{recipe?.title}</strong> has been added to your Cookidoo Created Recipes.</p>
                     {result.url && (
-                      <a className="btn btn-secondary btn-full" href={result.url} target="_blank" rel="noreferrer">
-                        View on Cookidoo →
-                      </a>
+                      <a className="btn btn-secondary btn-full" href={result.url} target="_blank" rel="noreferrer">View on Cookidoo →</a>
                     )}
                   </>
                 ) : (
@@ -729,11 +715,18 @@ function MainApp() {
         {/* ══ MY RECIPES TAB ════════════════════════════════════════════════ */}
         {tab === 'myrecipes' && (
           <div className="screen">
-            {history.length === 0 ? (
+            {historyLoading ? (
+              <div className="history-loading">
+                <div className="history-loading-spinner" />
+                <p>Loading recipes…</p>
+              </div>
+            ) : historyError ? (
+              <div className="error-box">Could not load recipes: {historyError}</div>
+            ) : history.length === 0 ? (
               <div className="history-empty">
                 <div className="history-empty-icon">🍳</div>
                 <p className="history-empty-text">No saved recipes yet.</p>
-                <p className="history-empty-hint">Generate a recipe and send it to Cookidoo — it'll appear here.</p>
+                <p className="history-empty-hint">Generate a recipe and send it to Cookidoo — it'll appear here for both of you.</p>
               </div>
             ) : (
               <div className="history-list">
@@ -754,17 +747,11 @@ function MainApp() {
 
       {/* ── TAB BAR ── */}
       <nav className="tab-bar">
-        <button
-          className={`tab-btn${tab === 'generate' ? ' tab-btn-active' : ''}`}
-          onClick={() => setTab('generate')}
-        >
+        <button className={`tab-btn${tab === 'generate' ? ' tab-btn-active' : ''}`} onClick={() => setTab('generate')}>
           <span className="tab-icon">✨</span>
           <span className="tab-label">Generate</span>
         </button>
-        <button
-          className={`tab-btn${tab === 'myrecipes' ? ' tab-btn-active' : ''}`}
-          onClick={() => setTab('myrecipes')}
-        >
+        <button className={`tab-btn${tab === 'myrecipes' ? ' tab-btn-active' : ''}`} onClick={() => setTab('myrecipes')}>
           <span className="tab-icon">📖</span>
           <span className="tab-label">My Recipes</span>
           {history.length > 0 && <span className="tab-badge">{history.length}</span>}
@@ -772,9 +759,7 @@ function MainApp() {
       </nav>
 
       {/* ── TOAST ── */}
-      {toast && (
-        <div className={`toast toast-${toast.type}`}>{toast.message}</div>
-      )}
+      {toast && <div className={`toast toast-${toast.type}`}>{toast.message}</div>}
 
     </div>
   );

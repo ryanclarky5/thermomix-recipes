@@ -622,3 +622,64 @@
 .pin-key-enter { background: #c0392b; color: white; box-shadow: 0 2px 8px rgba(192,57,43,0.35); }
 .pin-key-enter:active { background: #a93226; }
 .pin-key-back { font-size: 20px; color: #888; }
+
+/* ── AI Edit panel ── */
+.ai-edit-panel {
+  background: #f0f4ff;
+  border: 1.5px solid #c0d0f0;
+  border-radius: 14px;
+  padding: 18px 18px 14px;
+  margin-bottom: 14px;
+}
+.ai-edit-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #2244aa;
+  margin-bottom: 5px;
+}
+.ai-edit-hint {
+  font-size: 13px;
+  color: #6677aa;
+  margin-bottom: 12px;
+  line-height: 1.45;
+}
+.ai-edit-input {
+  width: 100%;
+  padding: 11px 13px;
+  border: 1.5px solid #b0c4f0;
+  border-radius: 10px;
+  font-size: 15px;
+  background: white;
+  line-height: 1.5;
+  resize: vertical;
+  margin-bottom: 12px;
+  transition: border-color 0.15s;
+  -webkit-appearance: none;
+}
+.ai-edit-input:focus { outline: none; border-color: #4466cc; }
+.ai-edit-input:disabled { opacity: 0.6; }
+
+/* ── Icon-only button variant ── */
+.btn-icon {
+  padding: 13px 14px;
+  font-size: 17px;
+}
+
+/* ── History loading ── */
+.history-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 60px 24px;
+  color: #aaa;
+  font-size: 14px;
+}
+.history-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e8e0d8;
+  border-top-color: #c0392b;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
