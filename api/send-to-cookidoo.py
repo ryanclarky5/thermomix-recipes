@@ -1,7 +1,6 @@
 """
 Vercel Python serverless function.
-Uses cookidoo-api to authenticate with email/password, then calls the
-Cookidoo web API with the resulting Bearer token to create the recipe.
+Creates new recipes (POST + PATCH) or updates existing ones (PATCH only when recipeId supplied).
 """
 from http.server import BaseHTTPRequestHandler
 import json
@@ -13,19 +12,44 @@ from cookidoo_api import Cookidoo, CookidooConfig, CookidooLocalizationConfig
 
 
 def _parse_locale(locale: str) -> tuple[str, str]:
-    """
-    Convert a locale string like 'ch-de' to (country_code, language).
-    'ch-de' -> ('ch', 'de-CH')
-    'de-DE' -> ('de', 'de-DE')
-    """
     parts = locale.lower().split("-")
-    country = parts[0]          # 'ch'
-    lang = parts[1] if len(parts) > 1 else parts[0]  # 'de'
-    language = f"{lang}-{country.upper()}"            # 'de-CH'
+    country = parts[0]
+    lang = parts[1] if len(parts) > 1 else parts[0]
+    language = f"{lang}-{country.upper()}"
     return country, language
 
 
-async def _push_recipe(recipe: dict) -> dict:
+def _format_step_text(step: dict) -> str:
+    """Append Thermomix parameters inline for thermomix steps."""
+    text = step.get("text", "")
+    if step.get("type") == "thermomix":
+        parts = []
+        temp = step.get("temperature")
+        time_s = step.get("time")
+        speed = step.get("speed")
+        if temp and int(temp) > 0:
+            if int(temp) >= 110:
+                parts.append("Varoma")
+            else:
+                parts.append(f"{int(temp)}\u00b0C")
+        if time_s:
+            time_s = int(time_s)
+            m, s = divmod(time_s, 60)
+            if m > 0 and s > 0:
+                parts.append(f"{m} min {s} sec")
+            elif m > 0:
+                parts.append(f"{m} min")
+            else:
+                parts.append(f"{s} sec")
+        if speed is not None:
+            spd = int(speed)
+            parts.append(f"Speed {spd}" if spd < 10 else "Turbo")
+        if parts:
+            return f"{text} | {' / '.join(parts)}"
+    return text
+
+
+async def _push_recipe(recipe: dict, existing_recipe_id: str | None = None) -> dict:
     email = os.environ["COOKIDOO_EMAIL"]
     password = os.environ["COOKIDOO_PASSWORD"]
     locale = os.environ.get("COOKIDOO_LOCALE", "ch-de")
@@ -43,15 +67,12 @@ async def _push_recipe(recipe: dict) -> dict:
         ),
     )
 
-    # ── Step 1: Authenticate via cookidoo-api ──────────────────────────────
     async with aiohttp.ClientSession() as auth_session:
         api = Cookidoo(auth_session, cfg)
         await api.login()
         access_token: str = api.auth_data.access_token
-        token_type: str = api.auth_data.token_type.lower().capitalize()  # "Bearer"
+        token_type: str = api.auth_data.token_type.lower().capitalize()
 
-    # ── Step 2: Push recipe to Cookidoo web API ────────────────────────────
-    # Cookidoo URL uses language-COUNTRY format (e.g. de-CH), not country-lang (ch-de)
     endpoint = f"{base_url}/created-recipes/{language}"
     headers = {
         "Accept": "application/json",
@@ -60,51 +81,57 @@ async def _push_recipe(recipe: dict) -> dict:
         "User-Agent": "Mozilla/5.0",
     }
 
+    patch_body = {
+        "description": recipe.get("description", ""),
+        "yield": {
+            "value": int(recipe.get("servings", 4)),
+            "unitText": "portion",
+        },
+        "prepTime": int(recipe.get("prepTime", 0)),
+        "totalTime": int(recipe.get("totalTime", 0)),
+        "tools": ["TM6"],
+        "ingredients": [
+            {"type": "INGREDIENT", "text": i.get("text", i) if isinstance(i, dict) else i}
+            for i in recipe.get("ingredients", [])
+        ],
+        "instructions": [
+            {
+                "type": "STEP",
+                "text": _format_step_text(s) if isinstance(s, dict) else s,
+            }
+            for s in recipe.get("instructions", [])
+        ],
+    }
+
     async with aiohttp.ClientSession() as session:
-        # POST — create skeleton with just the name, returns a recipe ID
-        async with session.post(
-            endpoint,
-            headers=headers,
-            json={"recipeName": recipe["title"]},
-        ) as resp:
-            raw = await resp.text()
-            if resp.status not in (200, 201):
-                raise RuntimeError(f"Create failed ({resp.status}): {raw}")
-            create_data = json.loads(raw)
+        if existing_recipe_id:
+            recipe_id = existing_recipe_id
+            patch_body["recipeName"] = recipe.get("title", "")
+        else:
+            async with session.post(
+                endpoint,
+                headers=headers,
+                json={"recipeName": recipe["title"]},
+            ) as resp:
+                raw = await resp.text()
+                if resp.status not in (200, 201):
+                    raise RuntimeError(f"Create failed ({resp.status}): {raw}")
+                create_data = json.loads(raw)
 
-        recipe_id = (
-            create_data.get("recipeId")
-            or create_data.get("id")
-            or create_data.get("recipe_id")
-        )
-        if not recipe_id:
-            raise RuntimeError(f"No recipe ID in Cookidoo response: {create_data}")
+            recipe_id = (
+                create_data.get("recipeId")
+                or create_data.get("id")
+                or create_data.get("recipe_id")
+            )
+            if not recipe_id:
+                raise RuntimeError(f"No recipe ID in Cookidoo response: {create_data}")
 
-        # Brief pause — Cookidoo needs a moment before accepting the PATCH
-        await asyncio.sleep(1.5)
+            await asyncio.sleep(1.5)
 
-        # PATCH — add all recipe details
         async with session.patch(
             f"{endpoint}/{recipe_id}",
             headers=headers,
-            json={
-                "description": recipe.get("description", ""),
-                "yield": {
-                    "value": int(recipe.get("servings", 4)),
-                    "unitText": "portion",
-                },
-                "prepTime": int(recipe.get("prepTime", 0)),
-                "totalTime": int(recipe.get("totalTime", 0)),
-                "tools": ["TM6"],
-                "ingredients": [
-                    {"type": "INGREDIENT", "text": i.get("text", i) if isinstance(i, dict) else i}
-                    for i in recipe.get("ingredients", [])
-                ],
-                "instructions": [
-                    {"type": "STEP", "text": s.get("text", s) if isinstance(s, dict) else s}
-                    for s in recipe.get("instructions", [])
-                ],
-            },
+            json=patch_body,
         ) as resp:
             if resp.status not in (200, 201, 204):
                 raw = await resp.text()
@@ -120,7 +147,6 @@ async def _push_recipe(recipe: dict) -> dict:
 class handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
-        # Parse body
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length))
@@ -136,8 +162,10 @@ class handler(BaseHTTPRequestHandler):
                 500, {"error": "COOKIDOO_EMAIL and COOKIDOO_PASSWORD must be set"}
             )
 
+        existing_recipe_id = body.get("recipeId") or None
+
         try:
-            result = asyncio.run(_push_recipe(recipe))
+            result = asyncio.run(_push_recipe(recipe, existing_recipe_id))
             self._respond(200, result)
         except Exception as exc:
             self._respond(500, {"error": str(exc)})
@@ -155,4 +183,4 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
     def log_message(self, *args):
-        pass  # suppress default CLF logging in Vercel logs
+        pass
