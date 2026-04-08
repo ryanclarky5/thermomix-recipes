@@ -619,13 +619,34 @@ function MainApp() {
     }
   }
 
-  function applySub(index) {
+  async function applySub(index) {
     const sub = ingSubs[index];
     if (!sub?.substitute) return;
+    const original = recipe.ingredients[index]?.text;
     const update = ings => ings.map((ing, i) => i === index ? { ...ing, text: sub.substitute } : ing);
-    setRecipe(r => ({ ...r, ingredients: update(r.ingredients) }));
+    // Update ingredient immediately so it's visible
+    const updatedRecipe = { ...recipe, ingredients: update(recipe.ingredients) };
+    setRecipe(updatedRecipe);
     setBaseRecipe(r => ({ ...r, ingredients: update(r.ingredients) }));
     dismissSub(index);
+    // Now fix the instructions to match
+    showToast('Updating instructions…', 'info');
+    try {
+      const res = await fetch('/api/edit-recipe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipe: updatedRecipe,
+          instruction: `"${original}" has been replaced with "${sub.substitute}". Update the instructions and any step parameters so they correctly reflect this substitution — remove any mention of "${original}" and adjust cooking method, time, or temperature if needed for the substitute.`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update instructions');
+      applyRecipe(data);
+      showToast('Instructions updated', 'success');
+    } catch (e) {
+      showToast('Instructions not updated: ' + e.message, 'error');
+    }
   }
 
   function dismissSub(index) {
