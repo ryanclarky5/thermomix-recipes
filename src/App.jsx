@@ -259,6 +259,8 @@ function MainApp() {
   const [nutritionLoading, setNutritionLoading] = useState(false);
   const [winePairing, setWinePairing] = useState(null);
   const [winePairingLoading, setWinePairingLoading] = useState(false);
+  // ingredient substitution: { [index]: { loading, substitute, tip } }
+  const [ingSubs, setIngSubs] = useState({});
 
   // Servings scaler
   const [baseRecipe, setBaseRecipe] = useState(null);
@@ -295,6 +297,7 @@ function MainApp() {
     setScaledServings(data.servings);
     setNutrition(null);
     setWinePairing(null);
+    setIngSubs({});
   }
 
   // ── Servings scaler ───────────────────────────────────────────────────────
@@ -597,6 +600,38 @@ function MainApp() {
     }
   }
 
+  // ── Ingredient substitution ───────────────────────────────────────────────
+  async function suggestSub(index) {
+    const ing = recipe.ingredients[index];
+    if (!ing) return;
+    setIngSubs(s => ({ ...s, [index]: { loading: true } }));
+    try {
+      const res = await fetch('/api/ingredient-sub', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ingredient: ing.text, recipe }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to get substitution');
+      setIngSubs(s => ({ ...s, [index]: { loading: false, substitute: data.substitute, tip: data.tip } }));
+    } catch (e) {
+      setIngSubs(s => ({ ...s, [index]: { loading: false, error: e.message } }));
+    }
+  }
+
+  function applySub(index) {
+    const sub = ingSubs[index];
+    if (!sub?.substitute) return;
+    const update = ings => ings.map((ing, i) => i === index ? { ...ing, text: sub.substitute } : ing);
+    setRecipe(r => ({ ...r, ingredients: update(r.ingredients) }));
+    setBaseRecipe(r => ({ ...r, ingredients: update(r.ingredients) }));
+    dismissSub(index);
+  }
+
+  function dismissSub(index) {
+    setIngSubs(s => { const n = { ...s }; delete n[index]; return n; });
+  }
+
   // ── Send to Cookidoo (new) ────────────────────────────────────────────────
   async function sendToCookidoo() {
     if (sending) return;
@@ -817,9 +852,45 @@ function MainApp() {
                     <button className="section-action-btn" onClick={openShoppingList} type="button">🛒 Shopping list</button>
                   </div>
                   <ul className="ingredient-list">
-                    {recipe.ingredients.map((ing, i) => (
-                      <li key={i} className="ingredient-item">{ing.text}</li>
-                    ))}
+                    {recipe.ingredients.map((ing, i) => {
+                      const sub = ingSubs[i];
+                      return (
+                        <li key={i} className="ingredient-item">
+                          <div className="ingredient-row">
+                            <span className="ingredient-text">{ing.text}</span>
+                            {!sub && (
+                              <button className="ing-sub-btn" onClick={() => suggestSub(i)} title="Suggest alternative" aria-label="Suggest alternative">
+                                🔄
+                              </button>
+                            )}
+                          </div>
+                          {sub && (
+                            <div className="ing-sub-tip">
+                              {sub.loading ? (
+                                <span className="ing-sub-loading">Finding alternative…</span>
+                              ) : sub.error ? (
+                                <>
+                                  <span className="ing-sub-error">{sub.error}</span>
+                                  <button className="ing-sub-dismiss" onClick={() => dismissSub(i)}>Dismiss</button>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="ing-sub-content">
+                                    <span className="ing-sub-label">Try instead:</span>
+                                    <span className="ing-sub-text">{sub.substitute}</span>
+                                    <p className="ing-sub-why">{sub.tip}</p>
+                                  </div>
+                                  <div className="ing-sub-actions">
+                                    <button className="ing-sub-apply" onClick={() => applySub(i)}>Use this</button>
+                                    <button className="ing-sub-dismiss" onClick={() => dismissSub(i)}>Dismiss</button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
 
