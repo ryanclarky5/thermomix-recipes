@@ -28,6 +28,37 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+// ─── Servings scaling ────────────────────────────────────────────────────────
+
+function scaleNumber(val, factor) {
+  const result = val * factor;
+  if (result === 0) return '0';
+  const intPart = Math.floor(result);
+  const frac = result - intPart;
+  const niceFracs = [[0.25,'¼'],[0.33,'⅓'],[0.5,'½'],[0.67,'⅔'],[0.75,'¾']];
+  for (const [n, sym] of niceFracs) {
+    if (Math.abs(frac - n) < 0.07) return intPart > 0 ? `${intPart} ${sym}` : sym;
+  }
+  if (Math.abs(result - Math.round(result)) < 0.07) return String(Math.round(result));
+  return parseFloat(result.toFixed(1)).toString();
+}
+
+function scaleIngredientText(text, factor) {
+  if (Math.abs(factor - 1) < 0.001) return text;
+  let done = false;
+  return text.replace(/(\d+(?:\.\d+)?)(?:\/(\d+))?/, (match, whole, denom) => {
+    if (done) return match;
+    done = true;
+    const val = denom ? parseFloat(whole) / parseFloat(denom) : parseFloat(whole);
+    return scaleNumber(val, factor);
+  });
+}
+
+function formatShoppingList(r) {
+  return `🛒 ${r.title} (serves ${r.servings})\n\n` +
+    r.ingredients.map(i => `• ${i.text}`).join('\n');
+}
+
 // ─── Image compression ───────────────────────────────────────────────────────
 
 async function compressImage(file, maxWidth = 1024, quality = 0.82) {
@@ -215,6 +246,14 @@ function MainApp() {
   const [aiEditPrompt, setAiEditPrompt] = useState('');
   const [aiEditing, setAiEditing] = useState(false);
 
+  // Servings scaler
+  const [baseRecipe, setBaseRecipe] = useState(null);
+  const [scaledServings, setScaledServings] = useState(null);
+
+  // Shopping list
+  const [shoppingListOpen, setShoppingListOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
   const [toast, setToast] = useState(null);
 
   const recognitionRef = useRef(null);
@@ -233,6 +272,49 @@ function MainApp() {
   function showToast(message, type = 'success') {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
+  }
+
+  // ── Apply a recipe (sets base for scaling) ───────────────────────────────
+  function applyRecipe(data) {
+    setRecipe(data);
+    setBaseRecipe(data);
+    setScaledServings(data.servings);
+  }
+
+  // ── Servings scaler ───────────────────────────────────────────────────────
+  function adjustServings(delta) {
+    const newServings = Math.max(1, scaledServings + delta);
+    if (newServings === scaledServings) return;
+    const factor = newServings / baseRecipe.servings;
+    setScaledServings(newServings);
+    setRecipe(prev => ({
+      ...prev,
+      servings: newServings,
+      ingredients: baseRecipe.ingredients.map(ing => ({
+        ...ing,
+        text: scaleIngredientText(ing.text, factor),
+      })),
+    }));
+  }
+
+  // ── Shopping list ─────────────────────────────────────────────────────────
+  async function openShoppingList() {
+    const text = formatShoppingList(recipe);
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `${recipe.title} — Shopping List`, text });
+        return;
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+      }
+    }
+    setShoppingListOpen(true);
+  }
+
+  async function copyShoppingList() {
+    await navigator.clipboard.writeText(formatShoppingList(recipe));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   // ── History helpers ───────────────────────────────────────────────────────
@@ -262,7 +344,7 @@ function MainApp() {
   }
 
   function openFromHistory(entry) {
-    setRecipe(entry);
+    applyRecipe(entry);
     setHistoryId(entry.id);
     setStep(2);
     setEditMode(false);
@@ -276,6 +358,8 @@ function MainApp() {
     setTab('myrecipes');
     setHistoryId(null);
     setRecipe(null);
+    setBaseRecipe(null);
+    setScaledServings(null);
     setStep(1);
     setEditMode(false);
     setAiEditMode(false);
@@ -332,7 +416,7 @@ function MainApp() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Generation failed');
-      setRecipe(data);
+      applyRecipe(data);
       setHistoryId(null);
       setEditMode(false);
       setAiEditMode(false);
@@ -360,7 +444,7 @@ function MainApp() {
   }
 
   function saveEdit() {
-    setRecipe({
+    const edited = {
       ...recipe,
       title: editForm.title.trim(),
       description: editForm.description.trim(),
@@ -372,7 +456,8 @@ function MainApp() {
       instructions: editForm.instructionsText
         .split('\n').map(l => l.replace(/^\d+\.\s*/, '').trim()).filter(Boolean)
         .map(text => ({ text, type: 'manual' })),
-    });
+    };
+    applyRecipe(edited);
     setEditMode(false);
   }
 
@@ -389,7 +474,7 @@ function MainApp() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'AI edit failed');
-      setRecipe(data);
+      applyRecipe(data);
       setAiEditMode(false);
       setAiEditPrompt('');
     } catch (e) {
@@ -461,6 +546,7 @@ function MainApp() {
     setStep(1); setPrompt(''); setRecipe(null); setResult(null);
     setError(''); setEditMode(false); setImages([]); setHistoryId(null);
     setAiEditMode(false); setAiEditPrompt('');
+    setBaseRecipe(null); setScaledServings(null);
   }
 
   const canGenerate = prompt.trim() || images.length > 0;
@@ -574,14 +660,21 @@ function MainApp() {
                   <h2 className="recipe-title">{recipe.title}</h2>
                   <p className="recipe-desc">{recipe.description}</p>
                   <div className="recipe-meta">
-                    <span>👤 {recipe.servings} {recipe.servings === 1 ? 'serving' : 'servings'}</span>
+                    <div className="servings-scaler">
+                      <button className="scaler-btn" onClick={() => adjustServings(-1)} disabled={(scaledServings ?? recipe.servings) <= 1} aria-label="Fewer servings">−</button>
+                      <span className="scaler-value">👤 {scaledServings ?? recipe.servings} {(scaledServings ?? recipe.servings) === 1 ? 'serving' : 'servings'}</span>
+                      <button className="scaler-btn" onClick={() => adjustServings(1)} aria-label="More servings">+</button>
+                    </div>
                     {recipe.prepTime > 0 && <span>🔪 {Math.round(recipe.prepTime / 60)} min prep</span>}
                     {recipe.totalTime > 0 && <span>⏱ {Math.round(recipe.totalTime / 60)} min total</span>}
                   </div>
                 </div>
 
                 <div className="recipe-section">
-                  <h3 className="section-heading">Ingredients</h3>
+                  <div className="section-heading-row">
+                    <h3 className="section-heading">Ingredients</h3>
+                    <button className="section-action-btn" onClick={openShoppingList} type="button">🛒 Shopping list</button>
+                  </div>
                   <ul className="ingredient-list">
                     {recipe.ingredients.map((ing, i) => (
                       <li key={i} className="ingredient-item">{ing.text}</li>
@@ -744,6 +837,29 @@ function MainApp() {
         )}
 
       </main>
+
+      {/* ── SHOPPING LIST MODAL ── */}
+      {shoppingListOpen && (
+        <div className="modal-overlay" onClick={() => { setShoppingListOpen(false); setCopied(false); }}>
+          <div className="modal-sheet" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 className="modal-title">🛒 Shopping List</h3>
+              <button className="modal-close" onClick={() => { setShoppingListOpen(false); setCopied(false); }}>×</button>
+            </div>
+            <p className="modal-recipe-name">{recipe?.title} · serves {recipe?.servings}</p>
+            <ul className="shopping-items">
+              {recipe?.ingredients.map((ing, i) => (
+                <li key={i} className="shopping-item">{ing.text}</li>
+              ))}
+            </ul>
+            <div className="modal-actions">
+              <button className="btn btn-primary btn-full" onClick={copyShoppingList}>
+                {copied ? '✓ Copied!' : '📋 Copy to clipboard'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── TAB BAR ── */}
       <nav className="tab-bar">
