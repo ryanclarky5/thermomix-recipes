@@ -113,7 +113,7 @@ function StepCard({ step, index }) {
   );
 }
 
-function HistoryCard({ entry, onOpen, onDelete }) {
+function HistoryCard({ entry, onOpen, onDuplicate, onDelete }) {
   return (
     <div className="history-card" onClick={onOpen} role="button" tabIndex={0}
       onKeyDown={e => e.key === 'Enter' && onOpen()}>
@@ -124,7 +124,10 @@ function HistoryCard({ entry, onOpen, onDelete }) {
           <span>📅 {fmtDate(entry.createdAt)}</span>
         </div>
       </div>
-      <button className="history-card-delete" onClick={e => { e.stopPropagation(); onDelete(); }} aria-label="Delete">🗑</button>
+      <div className="history-card-actions">
+        <button className="history-card-btn" onClick={e => { e.stopPropagation(); onDuplicate(); }} aria-label="Duplicate recipe" title="Duplicate">📋</button>
+        <button className="history-card-btn history-card-btn-delete" onClick={e => { e.stopPropagation(); onDelete(); }} aria-label="Delete recipe" title="Delete">🗑</button>
+      </div>
     </div>
   );
 }
@@ -349,6 +352,25 @@ function MainApp() {
     await upsertRecipe(entry);
     setHistory(prev => [entry, ...prev]);
     return entry;
+  }
+
+  function duplicateRecipe(entry) {
+    applyRecipe({
+      title: `${entry.title} (copy)`,
+      description: entry.description,
+      servings: entry.servings,
+      prepTime: entry.prepTime,
+      totalTime: entry.totalTime,
+      ingredients: entry.ingredients,
+      instructions: entry.instructions,
+    });
+    setHistoryId(null);
+    setStep(2);
+    setEditMode(false);
+    setAiEditMode(false);
+    setError('');
+    setResult(null);
+    setTab('generate');
   }
 
   async function deleteFromHistory(id) {
@@ -994,6 +1016,7 @@ function MainApp() {
                     key={entry.id}
                     entry={entry}
                     onOpen={() => openFromHistory(entry)}
+                    onDuplicate={() => duplicateRecipe(entry)}
                     onDelete={() => deleteFromHistory(entry.id)}
                   />
                 ))}
