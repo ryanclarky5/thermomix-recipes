@@ -561,6 +561,143 @@
 .history-empty-text { font-size: 17px; font-weight: 600; color: #444; }
 .history-empty-hint { font-size: 14px; color: #999; line-height: 1.5; max-width: 260px; }
 
+/* ── Star rating ── */
+.star-rating { display: flex; gap: 2px; }
+.star {
+  background: none;
+  border: none;
+  font-size: 22px;
+  cursor: pointer;
+  color: #ccc;
+  padding: 0 1px;
+  line-height: 1;
+  -webkit-tap-highlight-color: transparent;
+}
+.star:disabled { cursor: default; }
+.star-filled { color: #f5a623; }
+
+/* ── Comments ── */
+.comments-section {
+  background: #fff;
+  border-radius: 14px;
+  padding: 16px;
+  border: 1px solid #e8e2db;
+  margin-top: 8px;
+}
+.comments-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.comments-avg {
+  font-size: 14px;
+  font-weight: 600;
+  color: #555;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.comment-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+.comment-item {
+  padding: 10px 12px;
+  background: #f8f4f0;
+  border-radius: 10px;
+}
+.comment-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.comment-author { font-weight: 700; font-size: 13px; color: #333; }
+.comment-date { font-size: 12px; color: #aaa; margin-left: auto; }
+.comment-text { font-size: 14px; color: #555; line-height: 1.45; margin: 0; }
+.comment-form { border-top: 1px solid #ece8e2; padding-top: 14px; display: flex; flex-direction: column; gap: 9px; }
+.comment-form-label { font-size: 13px; font-weight: 700; color: #666; margin: 0; text-transform: uppercase; letter-spacing: 0.4px; }
+.comment-author-input { font-size: 14px !important; }
+.comment-text-input { font-size: 14px !important; resize: none; }
+
+/* ── Meal planner ── */
+.plan-recipe-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.plan-recipe-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #f8f4f0;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s, background 0.15s;
+}
+.plan-recipe-row-selected {
+  background: #fff6ee;
+  border-color: #e07b39;
+}
+.plan-checkbox {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 2px solid #ccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: #fff;
+  background: #fff;
+}
+.plan-checkbox-checked {
+  background: #e07b39;
+  border-color: #e07b39;
+}
+.plan-recipe-info { display: flex; flex-direction: column; gap: 2px; }
+.plan-recipe-title { font-size: 15px; font-weight: 600; color: #2d2d2d; }
+.plan-recipe-meta { font-size: 12px; color: #999; display: flex; align-items: center; gap: 4px; }
+.plan-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.plan-count { font-size: 13px; color: #888; flex: 1; }
+.plan-shopping-list {
+  background: #fff;
+  border: 1px solid #e8e2db;
+  border-radius: 14px;
+  padding: 16px;
+  margin-top: 4px;
+}
+.plan-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.plan-list-title { font-size: 17px; font-weight: 700; margin: 0; }
+.plan-list-recipes { font-size: 12px; color: #aaa; margin: 0 0 14px; line-height: 1.4; }
+.plan-category { margin-bottom: 14px; }
+.plan-category-name {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #e07b39;
+  margin: 0 0 6px;
+}
+.plan-items { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.plan-item { font-size: 14px; color: #333; padding: 4px 0; border-bottom: 1px solid #f0ebe4; }
+.plan-item:last-child { border-bottom: none; }
+.plan-list-note { font-size: 13px; color: #888; font-style: italic; margin: 8px 0 0; line-height: 1.4; }
+.btn-sm { padding: 6px 12px !important; font-size: 13px !important; }
+
 /* ── Tab bar ── */
 .tab-bar {
   position: fixed;

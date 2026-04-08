@@ -1,6 +1,6 @@
 import { db, DB_ENABLED } from './firebase';
 import {
-  collection, getDocs, doc, setDoc, deleteDoc, query, orderBy,
+  collection, getDocs, doc, setDoc, deleteDoc, updateDoc, arrayUnion, query, orderBy,
 } from 'firebase/firestore';
 
 const COL = 'recipes';
@@ -24,4 +24,9 @@ export async function upsertRecipe(recipe) {
 export async function removeRecipe(id) {
   if (!DB_ENABLED) return;
   await deleteDoc(doc(db, COL, id));
+}
+
+export async function addComment(recipeId, comment) {
+  if (!DB_ENABLED) return;
+  await updateDoc(doc(db, COL, recipeId), { comments: arrayUnion(comment) });
 }

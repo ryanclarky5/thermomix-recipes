@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import './App.css';
-import { fetchRecipes, upsertRecipe, removeRecipe, DB_ENABLED } from './db';
+import { fetchRecipes, upsertRecipe, removeRecipe, addComment as addCommentDb, DB_ENABLED } from './db';
 
 // ─── Formatting helpers ──────────────────────────────────────────────────────
 
@@ -109,6 +109,19 @@ function StepCard({ step, index }) {
           {speed && <div className="step-param"><span className="step-param-icon">💨</span><span className="step-param-val">{speed}</span></div>}
         </div>
       )}
+    </div>
+  );
+}
+
+function StarRating({ value, onChange, readOnly = false }) {
+  return (
+    <div className="star-rating">
+      {[1,2,3,4,5].map(n => (
+        <button key={n} type="button" className={`star${n <= value ? ' star-filled' : ''}`}
+          onClick={() => !readOnly && onChange(n)} disabled={readOnly} aria-label={`${n} star`}>
+          {n <= value ? '★' : '☆'}
+        </button>
+      ))}
     </div>
   );
 }
@@ -262,6 +275,18 @@ function MainApp() {
   // ingredient substitution: { [index]: { loading, substitute, tip } }
   const [ingSubs, setIngSubs] = useState({});
 
+  // Comments
+  const [commentAuthor, setCommentAuthor] = useState(() => localStorage.getItem('commentAuthor') || '');
+  const [commentRating, setCommentRating] = useState(0);
+  const [commentText, setCommentText] = useState('');
+  const [commentSaving, setCommentSaving] = useState(false);
+
+  // Meal plan
+  const [mealPlan, setMealPlan] = useState(new Set());
+  const [mealPlanList, setMealPlanList] = useState(null);
+  const [mealPlanLoading, setMealPlanLoading] = useState(false);
+  const [mealPlanCopied, setMealPlanCopied] = useState(false);
+
   // Servings scaler
   const [baseRecipe, setBaseRecipe] = useState(null);
   const [scaledServings, setScaledServings] = useState(null);
@@ -402,6 +427,8 @@ function MainApp() {
     setEditMode(false);
     setAiEditMode(false);
     setError('');
+    setCommentRating(0);
+    setCommentText('');
   }
 
   // ── Voice input ───────────────────────────────────────────────────────────
@@ -651,6 +678,82 @@ function MainApp() {
 
   function dismissSub(index) {
     setIngSubs(s => { const n = { ...s }; delete n[index]; return n; });
+  }
+
+  // ── Comments ──────────────────────────────────────────────────────────────
+  async function saveComment() {
+    if (!historyId || !commentRating || commentSaving) return;
+    setCommentSaving(true);
+    const author = commentAuthor.trim() || 'Anonymous';
+    localStorage.setItem('commentAuthor', author);
+    const comment = {
+      id: Date.now().toString(),
+      author,
+      rating: commentRating,
+      text: commentText.trim(),
+      createdAt: new Date().toISOString(),
+    };
+    try {
+      await addCommentDb(historyId, comment);
+      setHistory(h => h.map(e => e.id === historyId
+        ? { ...e, comments: [...(e.comments || []), comment] }
+        : e
+      ));
+      setCommentRating(0);
+      setCommentText('');
+      showToast('Comment saved ✓');
+    } catch (e) {
+      showToast(e.message, 'error');
+    } finally {
+      setCommentSaving(false);
+    }
+  }
+
+  // ── Meal planner ──────────────────────────────────────────────────────────
+  function toggleMealPlan(id) {
+    setMealPlan(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) { next.delete(id); }
+      else if (next.size < 7) { next.add(id); }
+      return next;
+    });
+    setMealPlanList(null);
+  }
+
+  async function generateMealPlanList() {
+    if (mealPlan.size === 0 || mealPlanLoading) return;
+    setMealPlanLoading(true);
+    const selected = history.filter(e => mealPlan.has(e.id));
+    try {
+      const res = await fetch('/api/meal-plan-shopping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipes: selected.map(r => ({ title: r.title, servings: r.servings, ingredients: r.ingredients })) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to generate list');
+      setMealPlanList(data);
+    } catch (e) {
+      showToast(e.message, 'error');
+    } finally {
+      setMealPlanLoading(false);
+    }
+  }
+
+  async function copyMealPlanList() {
+    if (!mealPlanList) return;
+    const selected = history.filter(e => mealPlan.has(e.id));
+    const header = `🗓 Weekly Shopping List\n${selected.map(r => `• ${r.title}`).join('\n')}\n\n`;
+    const body = mealPlanList.categories.map(cat =>
+      `${cat.name}\n${cat.items.map(i => `• ${i}`).join('\n')}`
+    ).join('\n\n');
+    const text = header + body + (mealPlanList.note ? `\n\n💡 ${mealPlanList.note}` : '');
+    if (navigator.share) {
+      try { await navigator.share({ text }); return; } catch {}
+    }
+    await navigator.clipboard.writeText(text);
+    setMealPlanCopied(true);
+    setTimeout(() => setMealPlanCopied(false), 2500);
   }
 
   // ── Send to Cookidoo (new) ────────────────────────────────────────────────
@@ -969,6 +1072,61 @@ function MainApp() {
                   </div>
                 )}
 
+                {/* ── Comments & Ratings (saved recipes only) ── */}
+                {historyId && (() => {
+                  const comments = history.find(e => e.id === historyId)?.comments || [];
+                  const avgRating = comments.length
+                    ? (comments.reduce((s, c) => s + c.rating, 0) / comments.length).toFixed(1)
+                    : null;
+                  return (
+                    <div className="comments-section">
+                      <div className="comments-header">
+                        <h3 className="section-heading">Reviews</h3>
+                        {avgRating && (
+                          <span className="comments-avg">
+                            <span className="star star-filled">★</span> {avgRating} ({comments.length})
+                          </span>
+                        )}
+                      </div>
+                      {comments.length > 0 && (
+                        <div className="comment-list">
+                          {comments.map(c => (
+                            <div key={c.id} className="comment-item">
+                              <div className="comment-meta">
+                                <span className="comment-author">{c.author}</span>
+                                <StarRating value={c.rating} readOnly />
+                                <span className="comment-date">{fmtDate(c.createdAt)}</span>
+                              </div>
+                              {c.text && <p className="comment-text">{c.text}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="comment-form">
+                        <p className="comment-form-label">Leave a review</p>
+                        <input
+                          className="field-input comment-author-input"
+                          placeholder="Your name"
+                          value={commentAuthor}
+                          onChange={e => setCommentAuthor(e.target.value)}
+                        />
+                        <StarRating value={commentRating} onChange={setCommentRating} />
+                        <textarea
+                          className="field-input comment-text-input"
+                          placeholder="Any notes? (optional)"
+                          value={commentText}
+                          onChange={e => setCommentText(e.target.value)}
+                          rows={2}
+                        />
+                        <button className="btn btn-secondary" onClick={saveComment}
+                          disabled={!commentRating || commentSaving}>
+                          {commentSaving ? 'Saving…' : 'Save review'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* AI Edit panel */}
                 {aiEditMode && (
                   <div className="ai-edit-panel">
@@ -1117,6 +1275,94 @@ function MainApp() {
           </div>
         )}
 
+        {/* ══ MEAL PLAN TAB ══════════════════════════════════════════════════ */}
+        {tab === 'plan' && (
+          <div className="screen">
+            <h2 className="screen-title">Weekly Meal Plan</h2>
+            <p className="screen-hint">Pick up to 7 recipes and get a consolidated shopping list.</p>
+
+            {history.length === 0 ? (
+              <div className="history-empty">
+                <div className="history-empty-icon">🗓</div>
+                <p className="history-empty-text">No saved recipes yet.</p>
+                <p className="history-empty-hint">Save some recipes first, then plan your week here.</p>
+              </div>
+            ) : (
+              <>
+                <div className="plan-recipe-list">
+                  {history.map(entry => {
+                    const selected = mealPlan.has(entry.id);
+                    const avgRating = entry.comments?.length
+                      ? (entry.comments.reduce((s, c) => s + c.rating, 0) / entry.comments.length).toFixed(1)
+                      : null;
+                    return (
+                      <button
+                        key={entry.id}
+                        className={`plan-recipe-row${selected ? ' plan-recipe-row-selected' : ''}`}
+                        onClick={() => toggleMealPlan(entry.id)}
+                        type="button"
+                      >
+                        <span className={`plan-checkbox${selected ? ' plan-checkbox-checked' : ''}`}>
+                          {selected ? '✓' : ''}
+                        </span>
+                        <span className="plan-recipe-info">
+                          <span className="plan-recipe-title">{entry.title}</span>
+                          <span className="plan-recipe-meta">
+                            {entry.servings} servings
+                            {avgRating && <> · <span className="star star-filled" style={{fontSize:'12px'}}>★</span> {avgRating}</>}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="plan-actions">
+                  {mealPlan.size > 0 && (
+                    <span className="plan-count">{mealPlan.size} recipe{mealPlan.size !== 1 ? 's' : ''} selected</span>
+                  )}
+                  <button className="btn btn-primary" onClick={generateMealPlanList}
+                    disabled={mealPlan.size === 0 || mealPlanLoading}>
+                    {mealPlanLoading ? <><span className="spinner" /> Building list…</> : '🛒 Generate shopping list'}
+                  </button>
+                  {mealPlan.size > 0 && (
+                    <button className="btn btn-ghost" onClick={() => { setMealPlan(new Set()); setMealPlanList(null); }}>
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                {mealPlanList && (
+                  <div className="plan-shopping-list">
+                    <div className="plan-list-header">
+                      <h3 className="plan-list-title">🛒 Shopping List</h3>
+                      <button className="btn btn-secondary btn-sm" onClick={copyMealPlanList}>
+                        {mealPlanCopied ? '✓ Copied!' : '📋 Copy / Share'}
+                      </button>
+                    </div>
+                    <p className="plan-list-recipes">
+                      {history.filter(e => mealPlan.has(e.id)).map(e => e.title).join(', ')}
+                    </p>
+                    {mealPlanList.categories.map((cat, i) => (
+                      <div key={i} className="plan-category">
+                        <h4 className="plan-category-name">{cat.name}</h4>
+                        <ul className="plan-items">
+                          {cat.items.map((item, j) => (
+                            <li key={j} className="plan-item">{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                    {mealPlanList.note && (
+                      <p className="plan-list-note">💡 {mealPlanList.note}</p>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
       </main>
 
       {/* ── SHOPPING LIST MODAL ── */}
@@ -1152,6 +1398,11 @@ function MainApp() {
           <span className="tab-icon">📖</span>
           <span className="tab-label">My Recipes</span>
           {history.length > 0 && <span className="tab-badge">{history.length}</span>}
+        </button>
+        <button className={`tab-btn${tab === 'plan' ? ' tab-btn-active' : ''}`} onClick={() => setTab('plan')}>
+          <span className="tab-icon">🗓</span>
+          <span className="tab-label">Meal Plan</span>
+          {mealPlan.size > 0 && <span className="tab-badge">{mealPlan.size}</span>}
         </button>
       </nav>
 
