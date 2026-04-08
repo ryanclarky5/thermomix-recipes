@@ -819,3 +819,165 @@
   line-height: 1.4;
 }
 .modal-actions { display: flex; flex-direction: column; gap: 10px; }
+
+/* ── Generate actions row ── */
+.generate-actions {
+  display: flex;
+  gap: 10px;
+}
+.generate-actions .btn-secondary { flex-shrink: 0; }
+.generate-btn { flex: 1; }
+
+/* ── Recipe suggestions ── */
+.suggestions-panel {
+  background: #fffbf0;
+  border: 1.5px solid #f0d870;
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.suggestions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.suggestions-label { font-size: 13px; font-weight: 600; color: #666; }
+.suggestions-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #888;
+  line-height: 1;
+  padding: 0 2px;
+  -webkit-tap-highlight-color: transparent;
+}
+.suggestion-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: white;
+  border: 1.5px solid #e8e0d8;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.suggestion-card:last-of-type { margin-bottom: 0; }
+.suggestion-card:active { border-color: #c0392b; background: #fffaf8; }
+.suggestion-card:disabled { opacity: 0.6; cursor: not-allowed; }
+.suggestion-title { font-size: 15px; font-weight: 700; color: #1a1a1a; margin-bottom: 3px; }
+.suggestion-desc { font-size: 13px; color: #666; line-height: 1.4; margin-bottom: 6px; }
+.suggestion-tags { display: flex; gap: 5px; flex-wrap: wrap; }
+.suggestion-tag {
+  font-size: 11px;
+  font-weight: 600;
+  background: #f0ebe5;
+  color: #888;
+  border-radius: 20px;
+  padding: 2px 8px;
+  text-transform: capitalize;
+}
+
+/* ── AI Extras row (nutrition + wine buttons) ── */
+.ai-extras-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.ai-extra-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border: 1.5px solid #e0d8d0;
+  border-radius: 20px;
+  background: white;
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+}
+.ai-extra-btn:not(:disabled):hover { border-color: #c0392b; color: #c0392b; }
+.ai-extra-btn:active { background: #fff0ee; }
+.ai-extra-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ── Shared info card (nutrition + wine) ── */
+.info-card {
+  background: white;
+  border-radius: 14px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+}
+.info-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.info-card-title { font-size: 14px; font-weight: 700; color: #1a1a1a; }
+.info-card-sub { font-weight: 400; color: #aaa; font-size: 12px; margin-left: 4px; }
+.info-card-dismiss {
+  background: #f0ebe5;
+  border: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.info-card-note {
+  font-size: 12px;
+  color: #aaa;
+  margin-top: 10px;
+  line-height: 1.4;
+  font-style: italic;
+}
+
+/* ── Nutrition macros ── */
+.macro-grid { display: flex; gap: 8px; flex-wrap: wrap; }
+.macro-item {
+  flex: 1;
+  min-width: 54px;
+  background: #f8f4f0;
+  border-radius: 10px;
+  padding: 10px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.macro-val { font-size: 19px; font-weight: 700; color: #1a1a1a; line-height: 1; }
+.macro-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #aaa;
+  font-weight: 600;
+}
+
+/* ── Wine pairing ── */
+.wine-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0ebe5;
+}
+.wine-item:last-of-type { border-bottom: none; padding-bottom: 0; }
+.wine-name { font-size: 14px; font-weight: 700; color: #5a2060; }
+.wine-why { font-size: 13px; color: #666; line-height: 1.4; }

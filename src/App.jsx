@@ -246,6 +246,17 @@ function MainApp() {
   const [aiEditPrompt, setAiEditPrompt] = useState('');
   const [aiEditing, setAiEditing] = useState(false);
 
+  // Suggestions
+  const [suggestMode, setSuggestMode] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggesting, setSuggesting] = useState(false);
+
+  // Nutrition + wine
+  const [nutrition, setNutrition] = useState(null);
+  const [nutritionLoading, setNutritionLoading] = useState(false);
+  const [winePairing, setWinePairing] = useState(null);
+  const [winePairingLoading, setWinePairingLoading] = useState(false);
+
   // Servings scaler
   const [baseRecipe, setBaseRecipe] = useState(null);
   const [scaledServings, setScaledServings] = useState(null);
@@ -274,11 +285,13 @@ function MainApp() {
     setTimeout(() => setToast(null), 3000);
   }
 
-  // ── Apply a recipe (sets base for scaling) ───────────────────────────────
+  // ── Apply a recipe (sets base for scaling, clears AI extras) ────────────
   function applyRecipe(data) {
     setRecipe(data);
     setBaseRecipe(data);
     setScaledServings(data.servings);
+    setNutrition(null);
+    setWinePairing(null);
   }
 
   // ── Servings scaler ───────────────────────────────────────────────────────
@@ -400,9 +413,8 @@ function MainApp() {
     setImages(prev => prev.filter((_, i) => i !== index));
   }
 
-  // ── Generate ──────────────────────────────────────────────────────────────
-  async function generate() {
-    if ((!prompt.trim() && images.length === 0) || loading) return;
+  // ── Generate (shared core) ────────────────────────────────────────────────
+  async function generateRecipe(description, imgs) {
     setLoading(true);
     setError('');
     try {
@@ -410,8 +422,8 @@ function MainApp() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          description: prompt,
-          images: images.map(({ base64, mediaType }) => ({ base64, mediaType })),
+          description,
+          images: imgs.map(({ base64, mediaType }) => ({ base64, mediaType })),
         }),
       });
       const data = await res.json();
@@ -426,6 +438,45 @@ function MainApp() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function generate() {
+    if ((!prompt.trim() && images.length === 0) || loading) return;
+    await generateRecipe(prompt, images);
+  }
+
+  // ── Recipe suggestions ────────────────────────────────────────────────────
+  async function getSuggestions() {
+    if ((!prompt.trim() && images.length === 0) || suggesting) return;
+    setSuggesting(true);
+    setSuggestions([]);
+    setSuggestMode(false);
+    setError('');
+    try {
+      const res = await fetch('/api/suggest-recipes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: prompt,
+          images: images.map(({ base64, mediaType }) => ({ base64, mediaType })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to get suggestions');
+      setSuggestions(data);
+      setSuggestMode(true);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
+  async function pickSuggestion(s) {
+    setPrompt(s.title);
+    setSuggestMode(false);
+    setSuggestions([]);
+    await generateRecipe(s.title, images);
   }
 
   // ── Manual edit ───────────────────────────────────────────────────────────
@@ -481,6 +532,46 @@ function MainApp() {
       setError(e.message);
     } finally {
       setAiEditing(false);
+    }
+  }
+
+  // ── Nutrition estimate ────────────────────────────────────────────────────
+  async function getNutrition() {
+    if (nutritionLoading) return;
+    setNutritionLoading(true);
+    try {
+      const res = await fetch('/api/nutrition', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipe }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to estimate nutrition');
+      setNutrition(data);
+    } catch (e) {
+      showToast(e.message, 'error');
+    } finally {
+      setNutritionLoading(false);
+    }
+  }
+
+  // ── Wine pairing ──────────────────────────────────────────────────────────
+  async function getWinePairing() {
+    if (winePairingLoading) return;
+    setWinePairingLoading(true);
+    try {
+      const res = await fetch('/api/wine-pairing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipe }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to get wine pairing');
+      setWinePairing(data);
+    } catch (e) {
+      showToast(e.message, 'error');
+    } finally {
+      setWinePairingLoading(false);
     }
   }
 
@@ -547,6 +638,8 @@ function MainApp() {
     setError(''); setEditMode(false); setImages([]); setHistoryId(null);
     setAiEditMode(false); setAiEditPrompt('');
     setBaseRecipe(null); setScaledServings(null);
+    setSuggestMode(false); setSuggestions([]);
+    setNutrition(null); setWinePairing(null);
   }
 
   const canGenerate = prompt.trim() || images.length > 0;
@@ -645,11 +738,37 @@ function MainApp() {
 
                 {error && <div className="error-box">{error}</div>}
 
-                <button className="btn btn-primary btn-full" onClick={generate} disabled={loading || !canGenerate}>
-                  {loading
-                    ? <><span className="spinner" /> {images.length > 0 ? 'Analysing photos…' : 'Generating recipe…'}</>
-                    : '✨ Generate Recipe'}
-                </button>
+                {suggestMode && suggestions.length > 0 && (
+                  <div className="suggestions-panel">
+                    <div className="suggestions-header">
+                      <span className="suggestions-label">Choose a recipe to generate</span>
+                      <button className="suggestions-close" onClick={() => { setSuggestMode(false); setSuggestions([]); }}>×</button>
+                    </div>
+                    {suggestions.map((s, i) => (
+                      <button key={i} className="suggestion-card" onClick={() => pickSuggestion(s)} disabled={loading}>
+                        <div className="suggestion-title">{s.title}</div>
+                        <div className="suggestion-desc">{s.description}</div>
+                        {s.tags?.length > 0 && (
+                          <div className="suggestion-tags">
+                            {s.tags.map(t => <span key={t} className="suggestion-tag">{t}</span>)}
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                    <button className="btn btn-ghost" style={{ marginTop: 6 }} onClick={() => { setSuggestMode(false); setSuggestions([]); }}>← Type manually instead</button>
+                  </div>
+                )}
+
+                <div className="generate-actions">
+                  <button className="btn btn-secondary" onClick={getSuggestions} disabled={suggesting || loading || !canGenerate}>
+                    {suggesting ? <>⏳ Getting ideas…</> : '💡 Suggest'}
+                  </button>
+                  <button className="btn btn-primary generate-btn" onClick={generate} disabled={loading || suggesting || !canGenerate}>
+                    {loading
+                      ? <><span className="spinner" /> {images.length > 0 ? 'Analysing…' : 'Generating…'}</>
+                      : '✨ Generate Recipe'}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -688,6 +807,53 @@ function MainApp() {
                     {recipe.instructions.map((s, i) => <StepCard key={i} step={s} index={i} />)}
                   </div>
                 </div>
+
+                {/* ── AI Extras: nutrition + wine ── */}
+                <div className="ai-extras-row">
+                  {!nutrition && (
+                    <button className="ai-extra-btn" onClick={getNutrition} disabled={nutritionLoading}>
+                      {nutritionLoading ? <>⏳ Estimating…</> : '📊 Nutrition'}
+                    </button>
+                  )}
+                  {!winePairing && (
+                    <button className="ai-extra-btn" onClick={getWinePairing} disabled={winePairingLoading}>
+                      {winePairingLoading ? <>⏳ Pairing…</> : '🍷 Wine pairing'}
+                    </button>
+                  )}
+                </div>
+
+                {nutrition && (
+                  <div className="info-card">
+                    <div className="info-card-header">
+                      <h3 className="info-card-title">📊 Nutrition <span className="info-card-sub">per serving</span></h3>
+                      <button className="info-card-dismiss" onClick={() => setNutrition(null)}>×</button>
+                    </div>
+                    <div className="macro-grid">
+                      <div className="macro-item"><span className="macro-val">{nutrition.perServing.calories}</span><span className="macro-label">kcal</span></div>
+                      <div className="macro-item"><span className="macro-val">{nutrition.perServing.protein}g</span><span className="macro-label">Protein</span></div>
+                      <div className="macro-item"><span className="macro-val">{nutrition.perServing.carbs}g</span><span className="macro-label">Carbs</span></div>
+                      <div className="macro-item"><span className="macro-val">{nutrition.perServing.fat}g</span><span className="macro-label">Fat</span></div>
+                      {nutrition.perServing.fibre != null && <div className="macro-item"><span className="macro-val">{nutrition.perServing.fibre}g</span><span className="macro-label">Fibre</span></div>}
+                    </div>
+                    <p className="info-card-note">{nutrition.disclaimer}</p>
+                  </div>
+                )}
+
+                {winePairing && (
+                  <div className="info-card">
+                    <div className="info-card-header">
+                      <h3 className="info-card-title">🍷 Wine Pairing</h3>
+                      <button className="info-card-dismiss" onClick={() => setWinePairing(null)}>×</button>
+                    </div>
+                    {winePairing.pairings?.map((p, i) => (
+                      <div key={i} className="wine-item">
+                        <span className="wine-name">{p.wine}</span>
+                        <span className="wine-why">{p.why}</span>
+                      </div>
+                    ))}
+                    {winePairing.note && <p className="info-card-note">{winePairing.note}</p>}
+                  </div>
+                )}
 
                 {/* AI Edit panel */}
                 {aiEditMode && (
