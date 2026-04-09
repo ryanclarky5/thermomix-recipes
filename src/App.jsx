@@ -281,6 +281,58 @@ function MainApp() {
   const [commentText, setCommentText] = useState('');
   const [commentSaving, setCommentSaving] = useState(false);
 
+  // Shopping list (Bring-like)
+  const [shoppingItems, setShoppingItems] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('sl_items') || '[]'); } catch { return []; }
+  });
+  const [shoppingInput, setShoppingInput] = useState('');
+  const [shoppingCheckedOpen, setShoppingCheckedOpen] = useState(true);
+
+  useEffect(() => {
+    localStorage.setItem('sl_items', JSON.stringify(shoppingItems));
+  }, [shoppingItems]);
+
+  function getShoppingFreq() {
+    try { return JSON.parse(localStorage.getItem('sl_freq') || '{}'); } catch { return {}; }
+  }
+
+  function addShoppingItem(name) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (shoppingItems.some(i => !i.checked && i.name.toLowerCase() === trimmed.toLowerCase())) return;
+    setShoppingItems(prev => [{ id: Date.now().toString(), name: trimmed, checked: false, addedAt: Date.now() }, ...prev]);
+    setShoppingInput('');
+  }
+
+  function toggleShoppingItem(id) {
+    setShoppingItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      if (!item.checked) {
+        const freq = getShoppingFreq();
+        freq[item.name] = { count: (freq[item.name]?.count || 0) + 1, lastUsed: Date.now() };
+        localStorage.setItem('sl_freq', JSON.stringify(freq));
+      }
+      return { ...item, checked: !item.checked };
+    }));
+  }
+
+  function removeShoppingItem(id) {
+    setShoppingItems(prev => prev.filter(i => i.id !== id));
+  }
+
+  function clearCheckedItems() {
+    setShoppingItems(prev => prev.filter(i => !i.checked));
+  }
+
+  function recallShoppingItem(name) {
+    if (shoppingItems.some(i => !i.checked && i.name.toLowerCase() === name.toLowerCase())) return;
+    setShoppingItems(prev => [{ id: Date.now().toString(), name, checked: false, addedAt: Date.now() }, ...prev]);
+  }
+
+  function recallAllChecked() {
+    setShoppingItems(prev => prev.map(i => i.checked ? { ...i, checked: false } : i));
+  }
+
   // Meal plan
   const [mealPlan, setMealPlan] = useState(new Set());
   const [mealPlanList, setMealPlanList] = useState(null);
@@ -854,6 +906,18 @@ function MainApp() {
           </div>
         </header>
       )}
+      {tab === 'shopping' && (() => {
+        const activeCount = shoppingItems.filter(i => !i.checked).length;
+        return (
+          <header className="app-header">
+            <span className="header-logo">🛒</span>
+            <div>
+              <h1 className="header-title">Shopping List</h1>
+              <p className="header-sub">{activeCount === 0 ? 'All done!' : `${activeCount} item${activeCount !== 1 ? 's' : ''} to get`}</p>
+            </div>
+          </header>
+        );
+      })()}
 
       {/* ── STEPS BAR ── */}
       {tab === 'generate' && !historyId && (
@@ -1363,6 +1427,110 @@ function MainApp() {
           </div>
         )}
 
+        {/* ══ SHOPPING LIST TAB ════════════════════════════════════════════ */}
+        {tab === 'shopping' && (() => {
+          const activeItems = shoppingItems.filter(i => !i.checked);
+          const checkedItems = shoppingItems.filter(i => i.checked);
+          const freq = getShoppingFreq();
+          const activeNames = new Set(activeItems.map(i => i.name.toLowerCase()));
+          const frequentSuggestions = Object.entries(freq)
+            .filter(([name]) => !activeNames.has(name.toLowerCase()))
+            .sort((a, b) => b[1].count - a[1].count || b[1].lastUsed - a[1].lastUsed)
+            .slice(0, 12)
+            .map(([name]) => name);
+
+          return (
+            <div className="screen shop-screen">
+              {/* ── Add item row ── */}
+              <div className="shop-add-row">
+                <input
+                  className="shop-add-input"
+                  placeholder="Add an item…"
+                  value={shoppingInput}
+                  onChange={e => setShoppingInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addShoppingItem(shoppingInput)}
+                  autoComplete="off"
+                />
+                <button
+                  className="shop-add-btn"
+                  onClick={() => addShoppingItem(shoppingInput)}
+                  disabled={!shoppingInput.trim()}
+                  aria-label="Add item"
+                >+</button>
+              </div>
+
+              {/* ── Active items ── */}
+              {activeItems.length === 0 && checkedItems.length === 0 ? (
+                <div className="shop-empty">
+                  <div className="shop-empty-icon">🛒</div>
+                  <p className="shop-empty-text">Your list is empty</p>
+                  <p className="shop-empty-hint">Add items above or tap a suggestion below</p>
+                </div>
+              ) : (
+                <ul className="shop-list">
+                  {activeItems.map(item => (
+                    <li key={item.id} className="shop-item">
+                      <button className="shop-check-btn" onClick={() => toggleShoppingItem(item.id)} aria-label="Mark as bought">
+                        <span className="shop-check-circle" />
+                      </button>
+                      <span className="shop-item-name">{item.name}</span>
+                      <button className="shop-remove-btn" onClick={() => removeShoppingItem(item.id)} aria-label="Remove">×</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* ── In basket (checked) ── */}
+              {checkedItems.length > 0 && (
+                <div className="shop-basket">
+                  <button className="shop-basket-header" onClick={() => setShoppingCheckedOpen(o => !o)}>
+                    <span className="shop-basket-title">In basket ({checkedItems.length})</span>
+                    <span className="shop-basket-chevron">{shoppingCheckedOpen ? '▾' : '▸'}</span>
+                  </button>
+                  {shoppingCheckedOpen && (
+                    <>
+                      <ul className="shop-list">
+                        {checkedItems.map(item => (
+                          <li key={item.id} className="shop-item shop-item-checked">
+                            <button className="shop-check-btn shop-check-btn-done" onClick={() => toggleShoppingItem(item.id)} aria-label="Uncheck">
+                              <span className="shop-check-circle shop-check-circle-done">✓</span>
+                            </button>
+                            <span className="shop-item-name shop-item-name-done">{item.name}</span>
+                            <button className="shop-remove-btn" onClick={() => removeShoppingItem(item.id)} aria-label="Remove">×</button>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="shop-basket-actions">
+                        <button className="shop-action-btn" onClick={recallAllChecked}>↩ Recall all</button>
+                        <button className="shop-action-btn shop-action-btn-clear" onClick={clearCheckedItems}>Clear basket</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ── Frequently bought ── */}
+              {frequentSuggestions.length > 0 && (
+                <div className="shop-frequent">
+                  <div className="shop-frequent-title">Frequently bought</div>
+                  <div className="shop-frequent-chips">
+                    {frequentSuggestions.map(name => (
+                      <button
+                        key={name}
+                        className={`shop-chip${activeNames.has(name.toLowerCase()) ? ' shop-chip-active' : ''}`}
+                        onClick={() => recallShoppingItem(name)}
+                        disabled={activeNames.has(name.toLowerCase())}
+                      >
+                        {activeNames.has(name.toLowerCase()) ? '✓ ' : '+ '}{name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
       </main>
 
       {/* ── SHOPPING LIST MODAL ── */}
@@ -1403,6 +1571,13 @@ function MainApp() {
           <span className="tab-icon">🗓</span>
           <span className="tab-label">Meal Plan</span>
           {mealPlan.size > 0 && <span className="tab-badge">{mealPlan.size}</span>}
+        </button>
+        <button className={`tab-btn${tab === 'shopping' ? ' tab-btn-active' : ''}`} onClick={() => setTab('shopping')}>
+          <span className="tab-icon">🛒</span>
+          <span className="tab-label">Shopping</span>
+          {shoppingItems.filter(i => !i.checked).length > 0 && (
+            <span className="tab-badge">{shoppingItems.filter(i => !i.checked).length}</span>
+          )}
         </button>
       </nav>
 
